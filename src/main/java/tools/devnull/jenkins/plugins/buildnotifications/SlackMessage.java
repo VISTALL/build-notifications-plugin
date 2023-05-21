@@ -26,11 +26,16 @@
  */
 package tools.devnull.jenkins.plugins.buildnotifications;
 
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.NameValuePair;
-import org.apache.commons.httpclient.methods.PostMethod;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.message.BasicNameValuePair;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.logging.Logger;
 
 /**
@@ -97,27 +102,29 @@ public class SlackMessage implements Message {
   @Override
   public boolean send() {
     String[] ids = channelIds.split("\\s*,\\s*");
-    HttpClient client = new HttpClient();
     boolean result = true;
-    for (String channelId : ids) {
-      PostMethod post = new PostMethod(
-          "https://slack.com/api/chat.postMessage"
-      );
+    try (CloseableHttpClient client  = HttpClients.createDefault()) {
+      for (String channelId : ids) {
+        HttpPost post = new HttpPost("https://slack.com/api/chat.postMessage");
 
-      post.setRequestHeader("Content-Type","application/x-www-form-urlencoded; charset=UTF-8");
+        post.setHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
 
-      post.setRequestBody(new NameValuePair[]{
-          new NameValuePair("token",botToken),
-          new NameValuePair("as_user","true"),
-          new NameValuePair("channel", channelId),
-          new NameValuePair("text", getMessage())
-      });
-      try {
-        client.executeMethod(post);
-      } catch (IOException e) {
-        LOGGER.severe("Error while sending notification: " + e.getMessage());
-        result = false;
+        post.setEntity(new UrlEncodedFormEntity(List.of(
+            new BasicNameValuePair("token", botToken),
+            new BasicNameValuePair("as_user", "true"),
+            new BasicNameValuePair("channel", channelId),
+            new BasicNameValuePair("text", getMessage())
+        ), StandardCharsets.UTF_8));
+        try {
+          client.execute(post, HttpResponse::getStatusLine);
+        } catch (IOException e) {
+          LOGGER.severe("Error while sending notification: " + e.getMessage());
+          result = false;
+        }
       }
+    } catch (IOException e) {
+      LOGGER.severe("Error while sending notification: " + e.getMessage());
+      result = false;
     }
     return result;
   }

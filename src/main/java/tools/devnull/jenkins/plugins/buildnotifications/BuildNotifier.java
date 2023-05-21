@@ -82,7 +82,8 @@ public class BuildNotifier {
   }
 
   private void setContent() {
-    if (build.getChangeSet().getItems().length == 0) {
+    Object[] items = build.getChangeSet().getItems();
+    if (items == null || items.length == 0) {
       message.setContent(this.getResultString());
     } else {
       StringBuilder changes = new StringBuilder();

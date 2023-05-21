@@ -27,9 +27,11 @@
 package tools.devnull.jenkins.plugins.buildnotifications;
 
 import net.sf.json.JSONObject;
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.methods.PostMethod;
-import org.apache.commons.httpclient.methods.StringRequestEntity;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.ContentType;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -93,18 +95,20 @@ public class BotecoMessage implements Message {
 
   @Override
   public boolean send() {
-    HttpClient client = new HttpClient();
-    PostMethod post = new PostMethod(endpoint);
-    post.setRequestHeader("Content-Type", "application/json; charset=utf-8");
-    Map<String, String> values = new HashMap<String, String>();
-    values.put("title", title);
-    values.put("text", content + "\n\n" + extraMessage);
-    values.put("url", url);
-    values.put("priority", priority);
-    try {
-      post.setRequestEntity(new StringRequestEntity(JSONObject.fromObject(values).toString(),
-          "application/json", "UTF-8"));
-      client.executeMethod(post);
+    try (CloseableHttpClient client = HttpClients.createDefault()) {
+      HttpPost post = new HttpPost(endpoint);
+      post.setHeader("Content-Type", "application/json; charset=utf-8");
+      Map<String, String> values = new HashMap<String, String>();
+      values.put("title", title);
+      values.put("text", content + "\n\n" + extraMessage);
+      values.put("url", url);
+      values.put("priority", priority);
+
+      post.setEntity(new StringEntity(JSONObject.fromObject(values).toString(), ContentType.APPLICATION_JSON));
+
+      client.execute(post, response -> {
+        return null;
+      });
       return true;
     } catch (IOException e) {
       LOGGER.severe("Error while sending notification: " + e.getMessage());

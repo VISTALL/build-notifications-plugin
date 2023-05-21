@@ -26,16 +26,19 @@
  */
 package tools.devnull.jenkins.plugins.buildnotifications;
 
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.NameValuePair;
-import org.apache.commons.httpclient.methods.PostMethod;
+import org.apache.http.HttpHost;
+import org.apache.http.HttpResponse;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.impl.client.*;
+import org.apache.http.message.BasicNameValuePair;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.logging.Logger;
-import org.apache.commons.httpclient.Credentials;
-import org.apache.commons.httpclient.UsernamePasswordCredentials;
-import org.apache.commons.httpclient.auth.AuthScope;
-import org.apache.commons.httpclient.methods.GetMethod;
 
 /**
  * A class that represents a Telegram message
@@ -51,7 +54,7 @@ public class TelegramMessage implements Message {
   private final String tProxy;
   private final String tProxyUsr;
   private final String tProxyPwd;
-  
+
 
   private String extraMessage;
   private String content;
@@ -113,37 +116,50 @@ public class TelegramMessage implements Message {
 
   public boolean send() {
     String[] ids = chatIds.split("\\s*,\\s*");
-    HttpClient client = new HttpClient();
-    // set proxy 
+    final CloseableHttpClient client;
+    // set proxy
     boolean result = true;
-    if (null != tProxy) {
+    if (tProxy != null) {
+      HttpClientBuilder clientBuilder = HttpClientBuilder.create();
+
       String[] split = tProxy.split(":");
       if (split.length == 2) {
         LOGGER.info("Try send via proxy " + tProxy);
-        client.getHostConfiguration().setProxy(split[0], Integer.parseInt(split[1]));
-        if (null != tProxyUsr && null != tProxyPwd) {
-          Credentials credentials = new UsernamePasswordCredentials(tProxyUsr, tProxyPwd);
-          client.getState().setProxyCredentials(AuthScope.ANY, credentials);
+        int proxyPort = Integer.parseInt(split[1]);
+        String proxyHost = split[0];
+        clientBuilder.setProxy(new HttpHost(proxyHost, proxyPort));
+        if (tProxyUsr != null && tProxyPwd != null) {
+          BasicCredentialsProvider credentialsProvider = new BasicCredentialsProvider();
+          credentialsProvider.setCredentials(new AuthScope(proxyHost, proxyPort), new UsernamePasswordCredentials(tProxyUsr, tProxyPwd));
+          clientBuilder.setDefaultCredentialsProvider(credentialsProvider);
         }
       }
+      client = clientBuilder.build();
+    } else {
+      client = HttpClients.createDefault();
     }
 
-    for (String chatId : ids) {
-      PostMethod post = new PostMethod(String.format(
-              "https://api.telegram.org/bot%s/sendMessage",
-              botToken
-      ));
-      post.setRequestHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
-      post.setRequestBody(new NameValuePair[]{
-        new NameValuePair("chat_id", chatId),
-        new NameValuePair("text", getMessage())
-      });
+    try {
+      for (String chatId : ids) {
+        HttpPost post = new HttpPost(String.format("https://api.telegram.org/bot%s/sendMessage", botToken));
+        post.setHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
+        post.setEntity(new UrlEncodedFormEntity(List.of(
+            new BasicNameValuePair("chat_id", chatId),
+            new BasicNameValuePair("text", getMessage())
+        ), StandardCharsets.UTF_8));
+
+        try {
+          LOGGER.info("Sending [" + getMessage() + "] to chat_id=[" + chatId + "]");
+          LOGGER.info("post result=" + client.execute(post, HttpResponse::getStatusLine));
+        } catch (IOException e) {
+          result = false;
+          LOGGER.warning("Error while sending notification: " + e.getMessage());
+        }
+      }
+    } finally {
       try {
-        LOGGER.info("Sending [" + getMessage() + "] to chat_id=["+chatId+"]");
-        LOGGER.info("post result=" + client.executeMethod(post));
-      } catch (IOException e) {
-        result = false;
-        LOGGER.warning("Error while sending notification: " + e.getMessage());
+        client.close();
+      } catch (IOException ignored) {
       }
     }
     return result;

@@ -26,9 +26,12 @@
  */
 package tools.devnull.jenkins.plugins.buildnotifications;
 
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.methods.PostMethod;
-import org.apache.commons.httpclient.methods.StringRequestEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.ContentType;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
@@ -99,13 +102,12 @@ public class PushoverMessage implements Message {
 
   @Override
   public boolean send() {
-    try {
-    HttpClient client = new HttpClient();
-    PostMethod post = new PostMethod("https://api.pushover.net/1/messages.json");
+    try (CloseableHttpClient client = HttpClients.createDefault()){
+    HttpPost post = new HttpPost("https://api.pushover.net/1/messages.json");
       String data = "token=" + appToken + "&user=" + userToken + "&message=" + encode(content + "\n\n" + extraMessage) +
           "&title=" + encode(title) + "&priority=" + priority + "&url=" + url + "&url_title=" + urlTitle;
-      post.setRequestEntity(new StringRequestEntity(data, "application/x-www-form-urlencoded", "UTF-8"));
-      client.executeMethod(post);
+      post.setEntity(new StringEntity(data, ContentType.APPLICATION_FORM_URLENCODED.withCharset(StandardCharsets.UTF_8)));
+      client.execute(post, HttpResponse::getStatusLine);
       return true;
     } catch (IOException e) {
       LOGGER.severe("Error while sending notification: " + e.getMessage());
