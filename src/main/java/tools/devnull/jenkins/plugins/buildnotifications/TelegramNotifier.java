@@ -34,11 +34,13 @@ import hudson.model.BuildListener;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.Publisher;
 import hudson.util.FormValidation;
-import java.util.Date;
+import hudson.util.Secret;
 import net.sf.json.JSONObject;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.StaplerRequest;
+
+import java.util.Date;
 
 /**
  * A notifier that uses Telegram to delivery messages
@@ -59,21 +61,25 @@ public class TelegramNotifier extends BaseNotifier {
    */
   @DataBoundConstructor
   public TelegramNotifier(String globalTarget,
-          String successfulTarget,
-          String brokenTarget,
-          String stillBrokenTarget,
-          String fixedTarget,
-          boolean sendIfSuccess,
-          String extraMessage) {
+                          String successfulTarget,
+                          String brokenTarget,
+                          String stillBrokenTarget,
+                          String fixedTarget,
+                          boolean sendIfSuccess,
+                          String extraMessage) {
     super(globalTarget, successfulTarget, brokenTarget, stillBrokenTarget, fixedTarget, sendIfSuccess, extraMessage);
   }
 
   @Override
   protected Message createMessage(String target, AbstractBuild<?, ?> build, Launcher launcher, BuildListener listener) {
-    TelegramDescriptor descriptor = (TelegramDescriptor) getDescriptor();
+    TelegramDescriptor descriptor = (TelegramDescriptor)getDescriptor();
     // if target null send to very global target
-    return new TelegramMessage(descriptor.getBotToken(), null == target ? descriptor.gettChat_id() : target, replaceEnvString(build, getExtraMessage()),
-             descriptor.gettProxy(), descriptor.gettProxyUsr(), descriptor.gettProxyPwd());
+    return new TelegramMessage(Secret.toString(descriptor.getBotToken()),
+                               null == target ? descriptor.gettChat_id() : target,
+                               replaceEnvString(build, getExtraMessage()),
+                               descriptor.gettProxy(),
+                               descriptor.gettProxyUsr(),
+                               Secret.toString(descriptor.gettProxyPwd()));
   }
 
   /**
@@ -82,17 +88,17 @@ public class TelegramNotifier extends BaseNotifier {
   @Extension
   public static class TelegramDescriptor extends BuildStepDescriptor<Publisher> {
 
-    private String botToken;
+    private Secret botToken;
     private String tProxy;
     private String tProxyUsr;
-    private String tProxyPwd;
+    private Secret tProxyPwd;
     private String tChat_id;
 
     public TelegramDescriptor() {
       load();
     }
 
-    public String getBotToken() {
+    public Secret getBotToken() {
       return botToken;
     }
 
@@ -100,7 +106,7 @@ public class TelegramNotifier extends BaseNotifier {
       return tProxy;
     }
 
-    public String gettProxyPwd() {
+    public Secret gettProxyPwd() {
       return tProxyPwd;
     }
 
@@ -116,13 +122,21 @@ public class TelegramNotifier extends BaseNotifier {
       this.tChat_id = tChat_id;
     }
 
+    public void setBotToken(Secret botToken) {
+      this.botToken = botToken;
+    }
+
+    public void settProxyPwd(Secret tProxyPwd) {
+      this.tProxyPwd = tProxyPwd;
+    }
+
     @Override
     public boolean configure(StaplerRequest req, JSONObject json) throws FormException {
+
       JSONObject config = json.getJSONObject("telegram");
-      this.botToken = config.getString("botToken");
+      req.bindJSON(this, config);
       this.tProxy = config.getString("tProxy");
       this.tProxyUsr = config.getString("tProxyUsr");
-      this.tProxyPwd = config.getString("tProxyPwd");
       this.tChat_id = config.getString("tChat_id");
       save();
       return true;
@@ -139,14 +153,14 @@ public class TelegramNotifier extends BaseNotifier {
     }
 
     public FormValidation doTestConnection(
-            @QueryParameter("botToken") final String botToken,
-            @QueryParameter("tChat_id") final String tChat_id,
-            @QueryParameter("tProxy") final String tProxy,
-            @QueryParameter("tProxyUsr") final String tProxyUsr,
-            @QueryParameter("tProxyPwd") final String tProxyPwd) {
+      @QueryParameter("botToken") final Secret botToken,
+      @QueryParameter("tChat_id") final String tChat_id,
+      @QueryParameter("tProxy") final String tProxy,
+      @QueryParameter("tProxyUsr") final String tProxyUsr,
+      @QueryParameter("tProxyPwd") final Secret tProxyPwd) {
 
-      TelegramMessage telegramMessage = new TelegramMessage(botToken, tChat_id, "tst message " + new Date(),
-              tProxy, tProxyUsr, tProxyPwd);
+      TelegramMessage telegramMessage = new TelegramMessage(Secret.toString(botToken), tChat_id, "tst message " + new Date(),
+                                                            tProxy, tProxyUsr, Secret.toString(tProxyPwd));
       if (telegramMessage.send()) {
         return FormValidation.ok("Success");
       }
